@@ -448,12 +448,6 @@ class App(ctk.CTk):
         self._nav_buttons: dict[str, NavButton] = {}
         self._active_page = "home"
 
-        _base = os.path.join(os.path.dirname(__file__), "01_Pic")
-        self._icon_compress = ctk.CTkImage(
-            _PILImage.open(os.path.join(_base, "icon_compress.png")), size=(64, 64))
-        self._icon_word = ctk.CTkImage(
-            _PILImage.open(os.path.join(_base, "icon_word.png")), size=(64, 64))
-
         self._build_sidebar()
         self._build_main()
         self._show_home()
@@ -550,8 +544,6 @@ class App(ctk.CTk):
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="both", expand=True, padx=28, pady=28)
 
-        ctk.CTkLabel(inner, image=self._icon_compress, text="").pack(anchor="w")
-
         ctk.CTkLabel(inner, text="縮小 PDF 容量",
                      font=ctk.CTkFont(FONT, 20, "bold"),
                      text_color=ON_SURFACE).pack(anchor="w", pady=(16, 6))
@@ -582,8 +574,6 @@ class App(ctk.CTk):
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="both", expand=True, padx=28, pady=28)
-
-        ctk.CTkLabel(inner, image=self._icon_word, text="").pack(anchor="w")
 
         ctk.CTkLabel(inner, text="轉換為 Word",
                      font=ctk.CTkFont(FONT, 20, "bold"),
