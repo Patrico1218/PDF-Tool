@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import subprocess
 import os
+import sys
 import threading
 import shutil
 import uuid as _uuid
@@ -65,6 +66,12 @@ def _task_update(tid: str, *, status: str = None, message: str = None):
 
 # ── 工具函式 ─────────────────────────────────────────────────────────────────
 def get_gs_path():
+    # 優先使用 PyInstaller 打包進 .app 的 Ghostscript binary
+    if hasattr(sys, "_MEIPASS"):
+        bundled = os.path.join(sys._MEIPASS, "gs")
+        if os.path.exists(bundled):
+            return bundled
+    # 開發環境 fallback：依序嘗試常見系統路徑
     for candidate in ["/opt/homebrew/bin/gs", "/usr/local/bin/gs"]:
         if os.path.exists(candidate):
             return candidate
