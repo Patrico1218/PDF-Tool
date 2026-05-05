@@ -1,7 +1,7 @@
 # TASKS — PyInstaller 打包 + 安裝說明文件
 
 ## 背景
-將現有 Python + customtkinter PDF 工具（app.py）用 PyInstaller 打包成獨立 macOS .app，讓同事無需安裝 Python 或 Ghostscript 即可使用。
+將現有 Python + customtkinter PDF 輕巧工具箱（app.py）用 PyInstaller 打包成獨立 macOS .app，讓同事無需安裝 Python 或 Ghostscript 即可使用。
 
 ## 前提假設（Implementer 執行前請確認）
 1. 開發機已安裝 Ghostscript，路徑為 `/opt/homebrew/bin/gs`（Apple Silicon）或 `/usr/local/bin/gs`（Intel）
@@ -112,7 +112,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="PDF 工具",
+    name="PDF 輕巧工具箱",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -131,16 +131,16 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="PDF 工具",
+    name="PDF 輕巧工具箱",
 )
 
 app = BUNDLE(
     coll,
-    name="PDF 工具.app",
+    name="PDF 輕巧工具箱.app",
     icon=None,              # 若有 .icns 圖示，在此指定路徑
     bundle_identifier="com.internal.pdf-tools",
     info_plist={
-        "CFBundleDisplayName": "PDF 工具",
+        "CFBundleDisplayName": "PDF 輕巧工具箱",
         "CFBundleShortVersionString": "1.0.0",
         "NSHighResolutionCapable": True,
     },
@@ -156,7 +156,7 @@ app = BUNDLE(
 **build.sh 完整內容：**
 ```bash
 #!/bin/bash
-# build.sh — 重新打包 PDF 工具.app
+# build.sh — 重新打包 PDF 輕巧工具箱.app
 # 使用方式：bash build.sh
 set -e
 
@@ -170,8 +170,8 @@ echo "執行 PyInstaller..."
 pyinstaller build.spec
 
 echo ""
-echo "打包完成。輸出位置：dist/PDF 工具.app"
-echo "將 dist/PDF 工具.app 拖入 /Applications 即可安裝。"
+echo "打包完成。輸出位置：dist/PDF 輕巧工具箱.app"
+echo "將 dist/PDF 輕巧工具箱.app 拖入 /Applications 即可安裝。"
 ```
 
 執行前需賦予執行權限：
@@ -188,11 +188,11 @@ chmod +x "/Users/Patrick/Desktop/Patrick/01_Vibe coding/04_PDF resizer/build.sh"
 **檔案完整內容：**
 
 ```markdown
-# PDF 工具 — 安裝與使用說明
+# PDF 輕巧工具箱 — 安裝與使用說明
 
 ## 安裝步驟
 
-1. 收到 **PDF 工具.app** 檔案後，將它拖曳到 **應用程式（Applications）** 資料夾。
+1. 收到 **PDF 輕巧工具箱.app** 檔案後，將它拖曳到 **應用程式（Applications）** 資料夾。
 2. 安裝完成。這個 app 不需要安裝 Python 或任何額外軟體。
 
 ---
@@ -202,7 +202,7 @@ chmod +x "/Users/Patrick/Desktop/Patrick/01_Vibe coding/04_PDF resizer/build.sh"
 因為這個 app 沒有經過 Apple 官方認證，macOS 預設會擋下來。
 只需要做一次以下步驟，之後就能正常開啟：
 
-1. 在 **Finder** 中找到 PDF 工具.app。
+1. 在 **Finder** 中找到 PDF 輕巧工具箱.app。
 2. 用**右鍵**（或按住 Control 再點一下）點選 app 圖示。
 3. 選擇選單中的「**打開**」。
 4. 出現警告視窗時，再按一次「**打開**」。
@@ -217,7 +217,7 @@ chmod +x "/Users/Patrick/Desktop/Patrick/01_Vibe coding/04_PDF resizer/build.sh"
 將 PDF 檔案壓縮到更小的容量，方便用 Email 傳送或上傳。
 
 使用步驟：
-1. 開啟 PDF 工具。
+1. 開啟 PDF 輕巧工具箱。
 2. 點選左側「**工作**」頁面。
 3. 點選「**縮小 PDF 容量**」按鈕。
 4. 選擇要壓縮的 PDF 檔案。
@@ -271,7 +271,7 @@ chmod +x "/Users/Patrick/Desktop/Patrick/01_Vibe coding/04_PDF resizer/build.sh"
 - [x] `app.py` 的 `get_gs_path()` 在 `sys._MEIPASS` 存在時，優先回傳打包路徑
 - [x] `app.py` 頂端 import 區塊包含 `import sys`
 - [x] `build.spec` 存在，執行 `pyinstaller build.spec` 不報錯
-- [ ] `dist/PDF 工具.app` 存在，雙擊可開啟
+- [ ] `dist/PDF 輕巧工具箱.app` 存在，雙擊可開啟
 - [ ] .app 在未安裝 Ghostscript 的環境中可成功壓縮 PDF
 - [x] `安裝說明.md` 存在，內容為繁體中文
 
@@ -289,4 +289,4 @@ chmod +x "/Users/Patrick/Desktop/Patrick/01_Vibe coding/04_PDF resizer/build.sh"
 
 後續步驟：
 1. 在當前開發機執行 `bash build.sh` 進行打包
-2. 在未安裝 Python 和 Ghostscript 的 Mac 上測試 dist/PDF 工具.app 的實際運行
+2. 在未安裝 Python 和 Ghostscript 的 Mac 上測試 dist/PDF 輕巧工具箱.app 的實際運行

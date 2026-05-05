@@ -7,14 +7,23 @@ import sys
 import threading
 import shutil
 import uuid as _uuid
+import tempfile
 import fitz  # PyMuPDF
 from PIL import Image as _PILImage
+from PIL import ImageFilter as _PILImageFilter
+from PIL import ImageOps as _PILImageOps
 
 try:
     from pdf2docx import Converter
     HAS_PDF2DOCX = True
 except ImportError:
     HAS_PDF2DOCX = False
+
+try:
+    from docx import Document
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
 
 
 # ── 字體（macOS 系統字體）────────────────────────────────────────────────────
@@ -76,6 +85,157 @@ def get_gs_path():
         if os.path.exists(candidate):
             return candidate
     return shutil.which("gs")
+
+
+def get_tesseract_path():
+    if hasattr(sys, "_MEIPASS"):
+        bundled = os.path.join(sys._MEIPASS, "tesseract")
+        if os.path.exists(bundled):
+            return bundled
+    for candidate in ["/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"]:
+        if os.path.exists(candidate):
+            return candidate
+    return shutil.which("tesseract")
+
+
+def get_tessdata_dir():
+    if hasattr(sys, "_MEIPASS"):
+        bundled = os.path.join(sys._MEIPASS, "tessdata")
+        if os.path.isdir(bundled):
+            return bundled
+    for candidate in ["/opt/homebrew/share/tessdata", "/usr/local/share/tessdata"]:
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def get_pdf_text_stats(pdf_path):
+    try:
+        doc = fitz.open(pdf_path)
+        page_count = doc.page_count
+        chars_by_page = [len(page.get_text("text").strip()) for page in doc]
+        doc.close()
+        total_chars = sum(chars_by_page)
+        pages_with_text = sum(1 for count in chars_by_page if count >= 20)
+        return page_count, total_chars, pages_with_text
+    except Exception:
+        return 0, 0, 0
+
+
+def should_use_ocr(pdf_path):
+    page_count, total_chars, pages_with_text = get_pdf_text_stats(pdf_path)
+    if page_count == 0:
+        return False
+    avg_chars = total_chars / page_count
+    text_page_ratio = pages_with_text / page_count
+    return total_chars < 80 or avg_chars < 30 or text_page_ratio < 0.3
+
+
+def validate_ocr_ready():
+    if not HAS_DOCX:
+        return "缺少 python-docx 套件，無法產生 OCR Word 檔。"
+
+    tesseract = get_tesseract_path()
+    if not tesseract:
+        return "找不到 Tesseract OCR，無法處理掃描型 PDF。"
+
+    tessdata = get_tessdata_dir()
+    if not tessdata:
+        return "找不到 Tesseract 語言資料目錄。"
+
+    missing = []
+    for lang in ["chi_tra", "eng"]:
+        if not os.path.exists(os.path.join(tessdata, f"{lang}.traineddata")):
+            missing.append(lang)
+    if missing:
+        return "缺少 OCR 語言包：" + "、".join(missing) + "。請安裝繁體中文與英文語言包。"
+    return None
+
+
+def preprocess_image_for_ocr(input_path, output_path):
+    image = _PILImage.open(input_path).convert("L")
+    image = _PILImageOps.autocontrast(image)
+    image = image.filter(_PILImageFilter.SHARPEN)
+    image = image.point(lambda pixel: 255 if pixel > 185 else 0)
+    image.save(output_path, dpi=(300, 300))
+
+
+def clean_ocr_lines(text):
+    lines = []
+    previous_blank = False
+    for raw_line in text.replace("\t", " ").splitlines():
+        line = " ".join(raw_line.strip().split())
+        if not line:
+            if not previous_blank and lines:
+                lines.append("")
+            previous_blank = True
+            continue
+        lines.append(line)
+        previous_blank = False
+    while lines and not lines[-1]:
+        lines.pop()
+    return lines
+
+
+def ocr_pdf_to_docx(pdf_path, output_path, status_callback=None):
+    tesseract = get_tesseract_path()
+    tessdata = get_tessdata_dir()
+    document = Document()
+    source_name = os.path.basename(pdf_path)
+    document.add_heading(os.path.splitext(source_name)[0], level=1)
+
+    with fitz.open(pdf_path) as pdf, tempfile.TemporaryDirectory() as tmpdir:
+        total = pdf.page_count
+        for index, page in enumerate(pdf, start=1):
+            if status_callback:
+                status_callback(f"正在 OCR 辨識第 {index}/{total} 頁，請稍候…")
+
+            zoom = 300 / 72
+            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+            image_path = os.path.join(tmpdir, f"page-{index}.png")
+            processed_path = os.path.join(tmpdir, f"page-{index}-ocr.png")
+            pix.save(image_path)
+            preprocess_image_for_ocr(image_path, processed_path)
+
+            cmd = [
+                tesseract,
+                processed_path,
+                "stdout",
+                "-l",
+                "chi_tra+eng",
+                "--tessdata-dir",
+                tessdata,
+                "--oem",
+                "1",
+                "--psm",
+                "4",
+                "-c",
+                "preserve_interword_spaces=1",
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=240,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or "OCR 辨識失敗")
+
+            if index > 1:
+                document.add_page_break()
+            document.add_heading(f"第 {index} 頁", level=2)
+
+            lines = clean_ocr_lines(result.stdout)
+            if lines:
+                for line in lines:
+                    if line:
+                        document.add_paragraph(line)
+                    else:
+                        document.add_paragraph("")
+            else:
+                document.add_paragraph("（此頁未辨識到文字）")
+
+    document.save(output_path)
 
 
 def format_size(b):
@@ -380,34 +540,48 @@ class ConvertDialog(ctk.CTkToplevel):
         if not self.input_path:
             messagebox.showwarning("未選擇檔案", "請先選擇一個 PDF 檔案。", parent=self)
             return
-        if not HAS_PDF2DOCX:
-            messagebox.showerror("缺少套件",
-                                 "請安裝 pdf2docx：\n\npip3.12 install pdf2docx",
-                                 parent=self)
-            return
         self.action_btn.configure(state="disabled", text="轉換中…")
-        self.status_label.configure(text="轉換中，請稍候…", text_color=ON_SURFACE_VAR)
+        self.status_label.configure(text="正在分析 PDF…", text_color=ON_SURFACE_VAR)
         self._task_id = _task_add(f"{os.path.basename(self.input_path)} — 轉換為 Word")
         threading.Thread(target=self._convert, daemon=True).start()
 
     def _convert(self):
         try:
             output = os.path.splitext(self.input_path)[0] + ".docx"
-            cv = Converter(self.input_path)
-            cv.convert(output)
-            cv.close()
-            self.after(0, lambda: self._done(output))
+            if should_use_ocr(self.input_path):
+                err = validate_ocr_ready()
+                if err:
+                    raise RuntimeError(err)
+                self._set_status("偵測為掃描 PDF，使用 OCR 辨識文字…\nOCR 可能需要較長時間，請稍候…")
+                ocr_pdf_to_docx(self.input_path, output, self._set_status)
+                self.after(0, lambda: self._done(output, "已使用 OCR 辨識"))
+            else:
+                if not HAS_PDF2DOCX:
+                    raise RuntimeError("缺少 pdf2docx 套件，無法使用一般轉換。")
+                self._set_status("偵測到可編輯文字，使用一般轉換…")
+                cv = Converter(self.input_path)
+                try:
+                    cv.convert(output)
+                finally:
+                    cv.close()
+                self.after(0, lambda: self._done(output, "已使用一般轉換"))
         except Exception as e:
             self.after(0, lambda: self._error(str(e)))
 
-    def _done(self, output):
+    def _set_status(self, msg):
+        self.after(0, lambda: self.status_label.configure(
+            text=msg, text_color=ON_SURFACE_VAR))
+        if self._task_id:
+            _task_update(self._task_id, status="running", message=msg)
+
+    def _done(self, output, mode):
         self.action_btn.configure(state="normal", text="開始轉換  →")
+        msg = f"✓ 完成！{mode}\n輸出：{os.path.basename(output)}"
         self.status_label.configure(
-            text=f"✓ 完成！輸出：{os.path.basename(output)}",
+            text=msg,
             text_color=SUCCESS_COLOR)
         if self._task_id:
-            _task_update(self._task_id, status="done",
-                         message=f"✓ 完成！輸出：{os.path.basename(output)}")
+            _task_update(self._task_id, status="done", message=msg)
 
     def _error(self, msg):
         self.action_btn.configure(state="normal", text="開始轉換  →")
@@ -447,7 +621,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
-        self.title("PDF 整理工具")
+        self.title("PDF 輕巧工具箱")
         self.geometry("960x660")
         self.minsize(820, 560)
         self.configure(fg_color=SURFACE)
@@ -468,7 +642,7 @@ class App(ctk.CTk):
 
         logo = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         logo.pack(fill="x", padx=18, pady=(32, 24))
-        ctk.CTkLabel(logo, text="PDF 整理工具",
+        ctk.CTkLabel(logo, text="PDF 輕巧工具箱",
                      font=ctk.CTkFont(FONT, 17, "bold"),
                      text_color=ON_SURFACE).pack(anchor="w")
         ctk.CTkLabel(logo, text="PDF 工作區",
@@ -526,7 +700,7 @@ class App(ctk.CTk):
     def _show_home(self):
         hdr = ctk.CTkFrame(self.canvas, fg_color="transparent")
         hdr.pack(fill="x", padx=52, pady=(52, 36))
-        ctk.CTkLabel(hdr, text="PDF 整理工具",
+        ctk.CTkLabel(hdr, text="PDF 輕巧工具箱",
                      font=ctk.CTkFont(FONT, 44, "bold"),
                      text_color=ON_SURFACE).pack(anchor="w")
         ctk.CTkLabel(hdr,
