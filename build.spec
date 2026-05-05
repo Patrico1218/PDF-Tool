@@ -1,16 +1,21 @@
 # build.spec
 # 使用方式：pyinstaller build.spec
 import os
+import platform
 import sys
 import customtkinter
 
 # ── 路徑設定 ──────────────────────────────────────────────────────────────────
-# 依照開發機架構選擇正確 gs 路徑
-GS_CANDIDATES = ["/opt/homebrew/bin/gs", "/usr/local/bin/gs"]
+# Apple Silicon 版本需要使用 arm64 Ghostscript
+if platform.machine() == "arm64":
+    GS_CANDIDATES = ["/opt/homebrew/bin/gs"]
+else:
+    GS_CANDIDATES = ["/usr/local/bin/gs"]
+
 GS_PATH = next((p for p in GS_CANDIDATES if os.path.exists(p)), None)
 if GS_PATH is None:
     raise FileNotFoundError(
-        "找不到 Ghostscript binary。請先執行 brew install ghostscript"
+        "找不到符合目前架構的 Ghostscript binary。請先用正確架構的 Homebrew 安裝 ghostscript"
     )
 
 CTK_DIR = os.path.dirname(customtkinter.__file__)
@@ -53,7 +58,7 @@ exe = EXE(
     upx=False,
     console=False,          # windowed 模式，不跳 terminal
     argv_emulation=False,
-    target_arch=None,
+    target_arch="arm64" if platform.machine() == "arm64" else None,
     codesign_identity=None,
     entitlements_file=None,
 )
